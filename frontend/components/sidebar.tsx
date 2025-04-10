@@ -46,6 +46,42 @@ const SidebarLink = ({ icon, text, href, isExpanded, isActive = false }: Sidebar
   );
 };
 
+// Add a helper function to safely execute contract calls
+const safeContractCall = async <T,>(
+  contractMethod: () => Promise<T>,
+  fallbackValue: T,
+  errorMessage = "Contract call failed"
+): Promise<T> => {
+  try {
+    return await contractMethod();
+  } catch (error: any) {
+    console.warn(`${errorMessage}:`, error?.message || error);
+    return fallbackValue;
+  }
+};
+
+// Add helper to safely format addresses
+const safeAddress = (address: string | null): string => {
+  if (!address) {
+    return ethers.constants.AddressZero;
+  }
+  
+  try {
+    // Check if this is a shortened/formatted address with ellipsis
+    if (address.includes('...')) {
+      console.warn("Detected shortened address format, cannot use for contract calls");
+      return ethers.constants.AddressZero;
+    }
+    
+    // Try to format the address properly using ethers
+    const formattedAddress = ethers.utils.getAddress(address);
+    return formattedAddress;
+  } catch (e) {
+    console.warn("Invalid address format:", address);
+    return ethers.constants.AddressZero;
+  }
+};
+
 const WalletButton = ({ 
   isConnected,
   isLoading,
@@ -68,6 +104,9 @@ const WalletButton = ({
   const [delegationStatus, setDelegationStatus] = useState<'none' | 'delegated' | 'unknown'>('unknown');
   const { contract } = useContext(Web3Context);
   
+  // Format the account for display only
+  const displayAccount = account ? formatAddress(account) : null;
+  
   // Check delegation status on load
   useEffect(() => {
     const checkDelegation = async () => {
@@ -76,20 +115,69 @@ const WalletButton = ({
         return;
       }
       
+      // Ensure proper address format - using the FULL account from props
+      const safeAccountAddress = safeAddress(account);
+      
+      // Direct balance check - this should be safer than other methods
+      let balance = ethers.BigNumber.from(0);
       try {
-        const currentDelegate = await contract.delegates(account);
-        if (currentDelegate === ethers.constants.AddressZero) {
+        balance = await safeContractCall(
+          () => contract.balanceOf(safeAccountAddress, { gasLimit: 300000 }),
+          ethers.BigNumber.from(0),
+          "Failed to get token balance"
+        );
+        
+        // If user has no tokens, they can't delegate
+        if (balance.eq(0)) {
           setDelegationStatus('none');
-        } else if (currentDelegate.toLowerCase() === account.toLowerCase()) {
-          setDelegationStatus('delegated');
-        } else {
-          // Delegated to someone else
-          setDelegationStatus('delegated');
+          return;
         }
       } catch (error) {
-        console.error("Error checking delegation status:", error);
+        console.error("Critical error checking token balance:", error);
         setDelegationStatus('unknown');
+        return;
       }
+      
+      // Try multiple approaches with proper error handling
+      let isDelegated = false;
+      
+      // Approach 1: Check delegation status directly (may fail due to ENS)
+      try {
+        const currentDelegate = await safeContractCall(
+          () => contract.delegates(safeAccountAddress, { gasLimit: 300000 }),
+          ethers.constants.AddressZero,
+          "Failed to check delegation status"
+        );
+        
+        if (currentDelegate !== ethers.constants.AddressZero) {
+          isDelegated = true;
+          setDelegationStatus('delegated');
+          return;
+        }
+      } catch (error) {
+        console.warn("Delegate check failed, trying alternative methods:", error);
+      }
+      
+      // Approach 2: Check voting power vs balance
+      try {
+        const votingPower = await safeContractCall(
+          () => contract.getVotingPower(safeAccountAddress, { gasLimit: 300000 }),
+          ethers.BigNumber.from(0),
+          "Failed to get voting power"
+        );
+        
+        // If they have voting power, they must have delegated
+        if (votingPower.gt(0)) {
+          isDelegated = true;
+          setDelegationStatus('delegated');
+          return;
+        }
+      } catch (error) {
+        console.warn("Voting power check failed:", error);
+      }
+      
+      // If all checks failed to detect delegation, assume not delegated
+      setDelegationStatus('none');
     };
     
     checkDelegation();
@@ -97,17 +185,40 @@ const WalletButton = ({
   
   // Function to delegate tokens
   const delegateTokens = async () => {
-    if (!contract || !account) return;
+    if (!contract || !account) {
+      return;
+    }
+    
+    // Ensure proper address format - using the FULL account from props
+    const safeAccountAddress = safeAddress(account);
     
     setIsDelegating(true);
+    
     try {
-      const tx = await contract.delegate(account);
-      await tx.wait();
+      // Use a more resilient approach with higher gas limit
+      const gasLimit = 500000; // Higher gas limit to ensure transaction goes through
+      
+      const tx = await contract.delegate(safeAccountAddress, { gasLimit });
+      
+      // Wait for transaction with a timeout
+      const receipt = await Promise.race([
+        tx.wait(),
+        new Promise((_, reject) => 
+          setTimeout(() => reject(new Error("Transaction confirmation timeout")), 60000)
+        )
+      ]);
+      
       setDelegationStatus('delegated');
       alert("Successfully delegated tokens! Your voting power is now active.");
-    } catch (error) {
-      console.error("Error delegating tokens:", error);
-      alert("Failed to delegate tokens. Please try again.");
+    } catch (error: any) {
+      console.error("Error delegating tokens:", error?.message || error);
+      
+      // Check if user rejected transaction
+      if (error?.code === 4001) {
+        alert("Transaction was rejected. Please try again.");
+      } else {
+        alert("Failed to delegate tokens. Please try again later.");
+      }
     } finally {
       setIsDelegating(false);
     }
@@ -120,7 +231,7 @@ const WalletButton = ({
         {isConnected && account ? (
           <>
             <div className="text-white font-medium mt-1">
-              {account}
+              {displayAccount}
             </div>
             <div className="text-dao-lightBlue font-syne text-sm mb-3">
               {tokenBalance} Governance Tokens
@@ -251,8 +362,8 @@ export default function Sidebar() {
     };
   }, [isExpanded]);
 
-  // Format the account address for display
-  const formattedAccount = account ? formatAddress(account) : null;
+  // Format the account address for DISPLAY ONLY - not for contract interactions
+  const formattedAccountDisplay = account ? formatAddress(account) : null;
   
   // Format token balance for display
   const formattedBalance = tokenBalance 
@@ -307,7 +418,7 @@ export default function Sidebar() {
           <WalletButton
             isConnected={isConnected}
             isLoading={isLoading}
-            account={formattedAccount}
+            account={account}
             tokenBalance={formattedBalance}
             onConnect={connectWallet}
             onDisconnect={disconnectWallet}
@@ -320,3 +431,4 @@ export default function Sidebar() {
     </div>
   )
 }
+

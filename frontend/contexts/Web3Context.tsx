@@ -59,6 +59,61 @@ interface CacheStore {
 
 const cache: CacheStore = {};
 
+// Helper function to safely execute contract calls with error handling
+const safeContractCall = async <T,>(
+  contractMethod: () => Promise<T>,
+  fallbackValue: T,
+  errorMessage = "Contract call failed"
+): Promise<T> => {
+  try {
+    return await contractMethod();
+  } catch (error: any) {
+    console.warn(`${errorMessage}:`, error?.message || error);
+    return fallbackValue;
+  }
+};
+
+// Helper to safely format addresses
+const safeAddress = (address: string | null): string => {
+  if (!address) {
+    return ethers.constants.AddressZero;
+  }
+  
+  try {
+    // Try to format the address properly using ethers
+    const formattedAddress = ethers.utils.getAddress(address);
+    return formattedAddress;
+  } catch (e) {
+    console.warn("Invalid address format:", address);
+    return ethers.constants.AddressZero;
+  }
+};
+
+// Create a custom provider that disables ENS lookups completely
+class NoENSProvider extends ethers.providers.Web3Provider {
+  resolveName(name: string): Promise<string> {
+    // Skip ENS resolution and just return the address as is
+    return Promise.resolve(name);
+  }
+  
+  lookupAddress(address: string): Promise<string | null> {
+    // Skip reverse lookup and just return null
+    return Promise.resolve(null);
+  }
+}
+
+class NoENSJsonRpcProvider extends ethers.providers.JsonRpcProvider {
+  resolveName(name: string): Promise<string> {
+    // Skip ENS resolution and just return the address as is
+    return Promise.resolve(name);
+  }
+  
+  lookupAddress(address: string): Promise<string | null> {
+    // Skip reverse lookup and just return null
+    return Promise.resolve(null);
+  }
+}
+
 // Function to get contract address based on network
 const getContractAddress = (networkName: string): string => {
   // Use environment variables if available, otherwise use the JSON file
@@ -94,7 +149,14 @@ export const Web3Provider: React.FC<{ children: ReactNode }> = ({ children }) =>
       let account = null;
       
       if (window.ethereum) {
-        ethersProvider = new ethers.providers.Web3Provider(window.ethereum);
+        // Create custom provider that disables ENS lookups
+        const providerOptions = {
+          name: 'sepolia',
+          chainId: 11155111
+        };
+        
+        // Use custom NoENSProvider instead of standard Web3Provider
+        ethersProvider = new NoENSProvider(window.ethereum, providerOptions);
         try {
           const accounts = await window.ethereum.request({
             method: 'eth_accounts', // This doesn't prompt, just checks if already connected
@@ -111,24 +173,58 @@ export const Web3Provider: React.FC<{ children: ReactNode }> = ({ children }) =>
         // Fallback to a public RPC for read-only operations
         const fallbackNetwork = DEFAULT_NETWORK;
         const fallbackRPC = RPC_ENDPOINTS[fallbackNetwork];
-        ethersProvider = new ethers.providers.JsonRpcProvider(fallbackRPC);
+        // Create provider with options that disable ENS lookups
+        const providerOptions = {
+          name: 'sepolia',
+          chainId: 11155111
+        };
+        
+        // Use custom NoENSJsonRpcProvider instead of standard JsonRpcProvider
+        ethersProvider = new NoENSJsonRpcProvider(fallbackRPC, providerOptions);
         console.log('Using fallback provider for read-only operations');
       }
       
-      const networkInfo = await ethersProvider.getNetwork();
+      // Get network information with error handling for ENS issues
+      let networkInfo;
+      try {
+        networkInfo = await ethersProvider.getNetwork();
+      } catch (error: any) {
+        console.warn('Error getting network, using fallback:', error.message);
+        // Use fallback network info
+        networkInfo = { chainId: 11155111, name: 'sepolia' }; // Sepolia testnet
+      }
+      
       const networkName = getNetworkNameFromChainId(networkInfo.chainId);
       
       const contractAddress = getContractAddress(networkName);
 
       // Create contract with signer if available, otherwise use provider for read-only
       const contractProvider = signer || ethersProvider;
+      
       const contract = new ethers.Contract(contractAddress, DAOGovLiteWithTokenABI, contractProvider);
+      
+      // Add safety check for contract initialization
+      if (!contract) {
+        console.error('Failed to initialize contract');
+        // Return minimal object to avoid errors
+        return {
+          provider: ethersProvider,
+          contract: null,
+          chainId: networkInfo.chainId,
+          account,
+          isConnected: !!account,
+          tokenBalance: '0',
+        };
+      }
 
       // Get token balance if account is available
       let tokenBalance = '0';
       if (account) {
         try {
-          const balanceWei = await contract.balanceOf(account);
+          // Safely format the account address
+          const safeAccountAddress = safeAddress(account);
+          
+          const balanceWei = await contract.balanceOf(safeAccountAddress);
           tokenBalance = ethers.utils.formatUnits(balanceWei, 18);
         } catch (error) {
           console.error('Error fetching token balance:', error);
@@ -235,15 +331,20 @@ export const Web3Provider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   // Auto-delegate tokens function
   const autoDelegateTokens = async (account: string) => {
-    if (!state.contract) return;
+    if (!state.contract) {
+      return;
+    }
+    
+    // Ensure proper address format
+    const safeAccountAddress = safeAddress(account);
     
     try {
       // Check if the user has already delegated their tokens
-      const currentDelegate = await state.contract.delegates(account);
+      const currentDelegate = await state.contract.delegates(safeAccountAddress);
       
       // If the user hasn't delegated yet and has a token balance
       if (currentDelegate === ethers.constants.AddressZero) {
-        const balance = await state.contract.balanceOf(account);
+        const balance = await state.contract.balanceOf(safeAccountAddress);
         
         if (balance.gt(0)) {
           console.log("Auto-delegating tokens to activate voting power...");
@@ -251,14 +352,35 @@ export const Web3Provider: React.FC<{ children: ReactNode }> = ({ children }) =>
           // Check if delegate function exists
           if (typeof state.contract.delegate === 'function') {
             try {
-              // Delegate to self
-              const tx = await state.contract.delegate(account);
-              await tx.wait();
-              console.log("✅ Successfully auto-delegated tokens to enable voting!");
-              
-              // Show toast notification
-              if (typeof window !== 'undefined' && window.alert) {
-                window.alert("Your tokens have been auto-delegated to activate your voting power!");
+              // Use a try-catch to safely handle ENS-related errors
+              try {
+                // Delegate to self
+                const tx = await state.contract.delegate(safeAccountAddress);
+                await tx.wait();
+                console.log("✅ Successfully auto-delegated tokens to enable voting!");
+                
+                // Show toast notification
+                if (typeof window !== 'undefined' && window.alert) {
+                  window.alert("Your tokens have been auto-delegated to activate your voting power!");
+                }
+              } catch (ensError: any) {
+                // Check if this is an ENS-related error
+                const errorString = ensError.toString();
+                if (errorString.includes('ENS') || errorString.includes('network does not support ENS')) {
+                  console.warn("ENS not supported on this network, using direct address delegation");
+                  // Try direct delegation without ENS resolution
+                  const tx = await state.contract.delegate(safeAccountAddress, { gasLimit: 200000 });
+                  await tx.wait();
+                  console.log("✅ Successfully auto-delegated tokens using direct address!");
+                  
+                  // Show toast notification
+                  if (typeof window !== 'undefined' && window.alert) {
+                    window.alert("Your tokens have been auto-delegated to activate your voting power!");
+                  }
+                } else {
+                  // Re-throw if it's not an ENS error
+                  throw ensError;
+                }
               }
             } catch (error) {
               console.error("Error auto-delegating tokens:", error);
@@ -303,7 +425,13 @@ export const Web3Provider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
 
     try {
-      const proposalIds = await state.contract.getProposals();
+      // Use safeContractCall to handle potential ENS errors
+      const proposalIds = await safeContractCall(
+        () => state.contract.getProposals({ gasLimit: 300000 }),
+        [],
+        "Failed to fetch proposals"
+      );
+      
       const result = proposalIds.map((id: ethers.BigNumber) => id.toNumber());
       
       // Cache the result
@@ -471,27 +599,68 @@ export const Web3Provider: React.FC<{ children: ReactNode }> = ({ children }) =>
       return { hasVoted: false, support: null, votingPower: 0 };
     }
 
+    // Ensure proper address format
+    const safeAccountAddress = safeAddress(state.account);
+
     try {
       // Check if user has voted on this proposal using different methods
       let hasVoted = false;
       try {
         // Try getUserVote first if it exists
         if (typeof state.contract.getUserVote === 'function') {
-          const [voted, support] = await state.contract.getUserVote(proposalId, state.account);
+          // Use safeContractCall to handle potential ENS errors
+          const [voted, support] = await safeContractCall(
+            () => state.contract.getUserVote(proposalId, safeAccountAddress, { gasLimit: 300000 }),
+            [false, false],
+            "Failed to get user vote"
+          );
+          
+          // Safely get voting power with error handling
+          let votingPower = 0;
+          try {
+            const vpResult = await safeContractCall(
+              () => state.contract.getVotingPower(safeAccountAddress, { gasLimit: 300000 }),
+              ethers.BigNumber.from(0),
+              "Failed to get voting power"
+            );
+            votingPower = parseFloat(ethers.utils.formatUnits(vpResult, 18));
+          } catch (vpError: any) {
+            console.warn("Error getting voting power, using token balance instead:", vpError.message);
+            try {
+              // Fallback to token balance
+              const balance = await safeContractCall(
+                () => state.contract.balanceOf(safeAccountAddress, { gasLimit: 300000 }),
+                ethers.BigNumber.from(0),
+                "Failed to get token balance"
+              );
+              votingPower = parseFloat(ethers.utils.formatUnits(balance, 18));
+            } catch (balanceError) {
+              console.error("Error getting token balance:", balanceError);
+            }
+          }
+          
           return { 
             hasVoted: voted, 
             support, 
-            votingPower: parseFloat(ethers.utils.formatUnits(await state.contract.getVotingPower(state.account), 18))
+            votingPower
           };
         }
         // Try hasVoted if it exists
         else if (typeof state.contract.hasVoted === 'function') {
-          hasVoted = await state.contract.hasVoted(proposalId, state.account);
+          hasVoted = await safeContractCall(
+            () => state.contract.hasVoted(proposalId, safeAccountAddress, { gasLimit: 300000 }),
+            false,
+            "Failed to check if user has voted"
+          );
         }
         // If neither function exists, check proposal data directly
         else {
           // Try to get proposal data and check votes
-          const proposal = await state.contract.getProposal(proposalId);
+          await safeContractCall(
+            () => state.contract.getProposal(proposalId, { gasLimit: 300000 }),
+            null,
+            "Failed to get proposal data"
+          );
           // We can't determine if they voted directly, so rely on localStorage
           console.log("Contract doesn't have vote checking functions - relying on localStorage");
         }
@@ -504,7 +673,7 @@ export const Web3Provider: React.FC<{ children: ReactNode }> = ({ children }) =>
       let support = null;
       if (hasVoted) {
         // Try to get from local storage
-        const storedVoteKey = `vote-${proposalId}-${state.account}`;
+        const storedVoteKey = `vote-${proposalId}-${safeAccountAddress}`;
         const storedVote = localStorage.getItem(storedVoteKey);
         if (storedVote) {
           try {
@@ -536,7 +705,7 @@ export const Web3Provider: React.FC<{ children: ReactNode }> = ({ children }) =>
         }
       } else {
         // Check localStorage even if contract says hasVoted is false
-        const storedVoteKey = `vote-${proposalId}-${state.account}`;
+        const storedVoteKey = `vote-${proposalId}-${safeAccountAddress}`;
         const storedVote = localStorage.getItem(storedVoteKey);
         if (storedVote) {
           try {
@@ -549,13 +718,34 @@ export const Web3Provider: React.FC<{ children: ReactNode }> = ({ children }) =>
         }
       }
       
-      // Get voting power (token balance)
-      const votingPower = await state.contract.getVotingPower(state.account);
+      // Get voting power (token balance) with error handling
+      let votingPower = 0;
+      try {
+        const vpResult = await safeContractCall(
+          () => state.contract.getVotingPower(safeAccountAddress, { gasLimit: 300000 }),
+          ethers.BigNumber.from(0),
+          "Failed to get voting power"
+        );
+        votingPower = parseFloat(ethers.utils.formatUnits(vpResult, 18));
+      } catch (vpError: any) {
+        console.warn("Error getting voting power, using token balance instead:", vpError.message);
+        try {
+          // Fallback to token balance
+          const balance = await safeContractCall(
+            () => state.contract.balanceOf(safeAccountAddress, { gasLimit: 300000 }),
+            ethers.BigNumber.from(0),
+            "Failed to get token balance"
+          );
+          votingPower = parseFloat(ethers.utils.formatUnits(balance, 18));
+        } catch (balanceError) {
+          console.error("Error getting token balance:", balanceError);
+        }
+      }
       
       return { 
         hasVoted, 
         support,
-        votingPower: parseFloat(ethers.utils.formatUnits(votingPower, 18)) 
+        votingPower
       };
     } catch (error) {
       console.error(`Error getting vote info for proposal #${proposalId}:`, error);
