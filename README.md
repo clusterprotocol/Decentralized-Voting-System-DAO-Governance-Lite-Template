@@ -129,7 +129,7 @@ daogov-lite/
 ├── blockchain/               # Smart contracts
 │   ├── build/                # Compiled contract artifacts
 │   ├── DAOGovLite.sol        # Main governance contract
-│   ├── GovernanceToken.sol   # Token contract
+│   ├── fund-user             # Token funding
 │   └── compile.js            # Compilation script
 │
 └── frontend/                 # Frontend application
