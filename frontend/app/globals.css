@@ -1,0 +1,238 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@300;400;500;600;700&family=Syne:wght@400;500;600;700;800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Hide scrollbars but keep scrolling functionality */
+html, body {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
+  font-family: var(--font-syne);
+}
+
+html::-webkit-scrollbar, body::-webkit-scrollbar {
+  display: none;  /* Chrome, Safari and Opera */
+}
+
+.hide-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+  overflow-y: auto;
+}
+
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* Apply scrollbar hiding to specific components */
+.proposal-card, 
+.glassmorphism, 
+.bg-dao-darkPurple,
+div[role="dialog"],
+.overflow-auto, 
+.overflow-y-auto,
+.overflow-y-scroll {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+  overflow-y: auto;
+}
+
+.proposal-card::-webkit-scrollbar, 
+.glassmorphism::-webkit-scrollbar, 
+.bg-dao-darkPurple::-webkit-scrollbar,
+div[role="dialog"]::-webkit-scrollbar,
+.overflow-auto::-webkit-scrollbar, 
+.overflow-y-auto::-webkit-scrollbar,
+.overflow-y-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+@layer base {
+  :root {
+    --background: 270 35% 7%;
+    --foreground: 0 0% 100%;
+
+    --card: 270 35% 10%;
+    --card-foreground: 0 0% 100%;
+
+    --popover: 270 35% 10%;
+    --popover-foreground: 0 0% 100%;
+
+    --primary: 217 92% 49%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 270 50% 40%;
+    --secondary-foreground: 0 0% 100%;
+
+    --muted: 270 20% 20%;
+    --muted-foreground: 0 0% 80%;
+
+    --accent: 262 100% 74%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 270 20% 20%;
+    --input: 270 20% 20%;
+    --ring: 262 100% 74%;
+
+    --radius: 0.5rem;
+
+    --sidebar-background: 270 35% 7%;
+    --sidebar-foreground: 0 0% 98%;
+    --sidebar-primary: 262 100% 74%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 270 35% 15%;
+    --sidebar-accent-foreground: 0 0% 98%;
+    --sidebar-border: 270 35% 15%;
+    --sidebar-ring: 262 100% 74%;
+    
+    /* Define our font variables */
+    --font-inter: 'Inter', sans-serif;
+    --font-space-grotesk: 'Space Grotesk', sans-serif;
+    --font-syne: 'Syne', sans-serif;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-dao-deepBlue text-foreground;
+    font-family: var(--font-syne);
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-syne);
+  }
+
+  button, a {
+    font-family: var(--font-syne);
+  }
+
+  input, textarea {
+    font-family: var(--font-syne);
+    @apply bg-dao-darkPurple/30 border border-dao-darkPurple text-white placeholder:text-dao-lightPurple/50;
+  }
+
+  /* Style placeholders */
+  ::placeholder {
+    @apply text-dao-lightPurple/50 font-syne;
+  }
+
+  ::-webkit-input-placeholder {
+    @apply text-dao-lightPurple/50 font-syne;
+  }
+
+  :-ms-input-placeholder {
+    @apply text-dao-lightPurple/50 font-syne;
+  }
+
+  ::-ms-input-placeholder {
+    @apply text-dao-lightPurple/50 font-syne;
+  }
+
+  .form-input {
+    @apply bg-dao-darkPurple/30 border border-dao-darkPurple rounded-md py-2 px-4 text-white 
+           focus:border-dao-neonPurple/50 focus:outline-none focus:ring-1 focus:ring-dao-neonPurple/30
+           placeholder:text-dao-lightPurple/50 font-syne;
+  }
+
+  .glassmorphism {
+    @apply bg-black/30 backdrop-blur-md border border-white/10 shadow-lg font-syne;
+  }
+  
+  .gradient-text {
+    @apply bg-gradient-to-r from-dao-lightPurple to-dao-lightBlue bg-clip-text text-transparent font-syne font-bold;
+  }
+  
+  .neon-border {
+    @apply border border-dao-neonPurple shadow-[0_0_10px_rgba(138,43,226,0.7)];
+  }
+  
+  .active-glow {
+    @apply shadow-[0_0_15px_rgba(138,43,226,0.9)];
+  }
+  
+  .hover-glow {
+    @apply transition-all duration-300 hover:shadow-[0_0_12px_rgba(138,43,226,0.7)];
+  }
+  
+  .hover-glow-blue {
+    @apply transition-all duration-300 hover:shadow-[0_0_12px_rgba(0,184,244,0.7)];
+  }
+  
+  .hover-glow-green {
+    @apply transition-all duration-300 hover:shadow-[0_0_12px_rgba(74,222,128,0.7)];
+  }
+  
+  .hover-glow-red {
+    @apply transition-all duration-300 hover:shadow-[0_0_12px_rgba(239,68,68,0.7)];
+  }
+  
+  .focus-glow {
+    @apply focus:outline-none focus:border-dao-neonPurple focus:ring-1 focus:ring-dao-neonPurple focus:shadow-[0_0_10px_rgba(138,43,226,0.5)] transition-all duration-200;
+  }
+  
+  .status-badge {
+    @apply px-2 py-1 text-xs font-medium rounded-md font-syne;
+  }
+
+  .status-badge.active {
+    @apply bg-green-600/20 text-green-400;
+  }
+  
+  .status-badge.pending {
+    @apply bg-yellow-600/20 text-yellow-400;
+  }
+  
+  .status-badge.executed {
+    @apply bg-blue-600/20 text-blue-400;
+  }
+  
+  .status-badge.failed, .status-badge.rejected {
+    @apply bg-red-600/20 text-red-400;
+  }
+
+  .proposal-card {
+    @apply bg-gradient-to-br from-dao-darkPurple/80 to-dao-deepBlue/70 backdrop-blur-md 
+           border border-dao-lightPurple/20 rounded-xl overflow-hidden transition-all duration-300 
+           hover:neon-border hover:scale-[1.02] hover:animate-pulse-glow p-6 font-syne;
+  }
+
+  .progress-bar {
+    @apply h-2 bg-dao-darkPurple rounded-full overflow-hidden;
+  }
+
+  .progress-bar-fill {
+    @apply h-full bg-gradient-to-r from-dao-neonPurple to-dao-lightPurple transition-all duration-500;
+  }
+
+  .connect-wallet-btn {
+    @apply bg-dao-neonPurple hover:bg-dao-neonPurple/90 text-white font-syne
+           px-4 py-2 rounded-lg transition-all duration-300 hover:shadow-[0_0_15px_rgba(138,43,226,0.7)];
+  }
+
+  .submit-proposal-btn {
+    @apply bg-gradient-to-r from-dao-neonPurple to-dao-lightPurple text-white font-syne
+           px-6 py-2 rounded-lg transition-all duration-300 hover:shadow-[0_0_15px_rgba(138,43,226,0.7)];
+  }
+
+  /* Animated pulse glow for buttons and important elements */
+  .animate-pulse-glow {
+    animation: pulse-glow 2s infinite;
+  }
+
+  @keyframes pulse-glow {
+    0%, 100% {
+      filter: drop-shadow(0 0 5px rgba(138, 43, 226, 0.7));
+    }
+    50% {
+      filter: drop-shadow(0 0 15px rgba(138, 43, 226, 0.9));
+    }
+  }
+}
