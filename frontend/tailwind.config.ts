@@ -64,14 +64,6 @@ const config: Config = {
         syne: ["var(--font-syne)"],
       },
       keyframes: {
-        "accordion-down": {
-          from: { height: "0" },
-          to: { height: "var(--radix-accordion-content-height)" },
-        },
-        "accordion-up": {
-          from: { height: "var(--radix-accordion-content-height)" },
-          to: { height: "0" },
-        },
         "pulse-glow": {
           "0%, 100%": { 
             filter: "drop-shadow(0 0 5px rgba(138, 43, 226, 0.7))"
@@ -82,13 +74,11 @@ const config: Config = {
         }
       },
       animation: {
-        "accordion-down": "accordion-down 0.2s ease-out",
-        "accordion-up": "accordion-up 0.2s ease-out",
         "pulse-glow": "pulse-glow 2s infinite",
       },
     },
   },
-  plugins: [require("tailwindcss-animate")],
+  plugins: [],
 }
 
 export default config
